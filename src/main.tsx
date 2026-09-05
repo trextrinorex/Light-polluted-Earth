@@ -136,12 +136,23 @@ function OrbitRing({ radius, color, opacity = 0.35 }: { radius: number; color: s
     }
     return pts;
   }, [radius]);
-  const geom = useMemo(() => new THREE.BufferGeometry().setFromPoints(points), [points]);
-  const line = useMemo(() => {
-    const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
-    return new THREE.Line(geom, material);
-  }, [geom, color, opacity]);
-  return <primitive object={line} />;
+
+  const geom = useMemo(() => {
+    const g = new THREE.BufferGeometry().setFromPoints(points);
+    return g;
+  }, [points]);
+
+  useEffect(() => {
+    return () => {
+      geom.dispose();
+    };
+  }, [geom]);
+
+  return (
+    <line geometry={geom}>
+      <lineBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} />
+    </line>
+  );
 }
 
 function DebrisCloud({
@@ -159,28 +170,34 @@ function DebrisCloud({
     [items]
   );
 
-  // procedural extra particles for density
+  // Precompute positions + stable radii (never call Math.random during render)
   const extra = useMemo(() => {
     const n = shell === 'LEO' ? 180 : shell === 'MEO' ? 60 : 30;
-    const arr: THREE.Vector3[] = [];
     const baseR = shell === 'LEO' ? 2.2 : shell === 'MEO' ? 2.55 : 2.95;
+    const arr: { pos: THREE.Vector3; radius: number }[] = [];
     for (let i = 0; i < n; i++) {
       const lat = (Math.random() - 0.5) * 140;
       const lon = Math.random() * 360 - 180;
       const jitter = (Math.random() - 0.5) * 0.12;
-      arr.push(latLon(lat, lon, baseR + jitter));
+      arr.push({
+        pos: latLon(lat, lon, baseR + jitter),
+        radius: 0.008 + Math.random() * 0.01,
+      });
     }
     return arr;
   }, [shell]);
 
   if (!visible) return null;
 
+  const color =
+    shell === 'LEO' ? '#ff6b6b' : shell === 'MEO' ? '#ffb86b' : '#939393';
+
   return (
     <group>
       {extra.map((p, i) => (
-        <mesh key={`e-${shell}-${i}`} position={p}>
-          <sphereGeometry args={[0.008 + Math.random() * 0.01, 6, 6]} />
-          <meshBasicMaterial color={shell === 'LEO' ? '#ff6b6b' : shell === 'MEO' ? '#ffb86b' : '#939393'} toneMapped={false} />
+        <mesh key={`e-${shell}-${i}`} position={p.pos}>
+          <sphereGeometry args={[p.radius, 6, 6]} />
+          <meshBasicMaterial color={color} toneMapped={false} />
         </mesh>
       ))}
       {items.map((d, i) => (
@@ -190,8 +207,12 @@ function DebrisCloud({
               e.stopPropagation();
               onSelect(d);
             }}
-            onPointerOver={() => (document.body.style.cursor = 'pointer')}
-            onPointerOut={() => (document.body.style.cursor = 'default')}
+            onPointerOver={() => {
+              document.body.style.cursor = 'pointer';
+            }}
+            onPointerOut={() => {
+              document.body.style.cursor = 'default';
+            }}
           >
             <sphereGeometry args={[0.028, 12, 12]} />
             <meshBasicMaterial
@@ -232,7 +253,6 @@ function Earth({ shells, onSelect }: { shells: Record<string, boolean>; onSelect
         />
       </mesh>
       <Atmosphere />
-      {/* Orbit shells */}
       <OrbitRing radius={2.2} color="#ff4d4d" opacity={0.4} />
       <OrbitRing radius={2.55} color="#ffb86b" opacity={0.28} />
       <OrbitRing radius={2.95} color="#5f5f5f" opacity={0.22} />
@@ -265,18 +285,18 @@ function Scene({ shells, onSelect }: { shells: Record<string, boolean>; onSelect
 }
 
 /* ---------- UI ---------- */
-function MissionClock() {
+function useMissionClock() {
   const [t, setT] = useState('00:00:00');
   useEffect(() => {
     const start = Date.now();
-    const id = setInterval(() => {
+    const id = window.setInterval(() => {
       const s = Math.floor((Date.now() - start) / 1000);
       const hh = String(Math.floor(s / 3600)).padStart(2, '0');
       const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
       const ss = String(s % 60).padStart(2, '0');
       setT(`${hh}:${mm}:${ss}`);
     }, 1000);
-    return () => clearInterval(id);
+    return () => window.clearInterval(id);
   }, []);
   return t;
 }
@@ -286,10 +306,17 @@ function App() {
   const [selected, setSelected] = useState<DebrisPoint | null>(null);
   const [shells, setShells] = useState({ LEO: true, MEO: true, GEO: true });
   const [reduced, setReduced] = useState(false);
-  const clock = MissionClock();
+  const clock = useMissionClock();
 
   useEffect(() => {
     setReduced(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }, []);
+
+  // Ensure cursor is restored if panel closes while hovering a node
+  useEffect(() => {
+    return () => {
+      document.body.style.cursor = 'default';
+    };
   }, []);
 
   const toggleShell = (key: 'LEO' | 'MEO' | 'GEO') =>
@@ -320,7 +347,6 @@ function App() {
 
       <div className="hud-overlay" aria-hidden />
 
-      {/* Corner HUD crosshairs */}
       <div className="crosshair tl">
         <span>OBS DECK // PRIMARY</span>
         <span className="coord">LAT 00.00 · LON 000.00</span>
@@ -358,10 +384,10 @@ function App() {
 
         {menu && (
           <nav className="nav">
-            <button className="active" onClick={() => scrollTo('hero')}>OVERVIEW</button>
-            <button onClick={() => scrollTo('tracker')}>DEBRIS TRACKER</button>
-            <button onClick={() => scrollTo('timeline')}>TIMELINE</button>
-            <button onClick={() => scrollTo('solutions')}>SOLUTIONS</button>
+            <button type="button" className="active" onClick={() => scrollTo('hero')}>OVERVIEW</button>
+            <button type="button" onClick={() => scrollTo('tracker')}>DEBRIS TRACKER</button>
+            <button type="button" onClick={() => scrollTo('timeline')}>TIMELINE</button>
+            <button type="button" onClick={() => scrollTo('solutions')}>SOLUTIONS</button>
           </nav>
         )}
 
@@ -377,10 +403,10 @@ function App() {
             This station visualizes the growing cloud that threatens global communications, navigation, and crewed flight.
           </p>
           <div className="actions">
-            <button className="primary" onClick={() => scrollTo('tracker')}>
+            <button type="button" className="primary" onClick={() => scrollTo('tracker')}>
               ENTER TRACKER <span>↗</span>
             </button>
-            <button className="secondary" onClick={() => scrollTo('solutions')}>
+            <button type="button" className="secondary" onClick={() => scrollTo('solutions')}>
               VIEW SOLUTIONS
             </button>
           </div>
@@ -394,13 +420,13 @@ function App() {
             </span>
           </div>
           <div className="orbit-toggles">
-            <button className={shells.LEO ? 'active' : ''} onClick={() => toggleShell('LEO')}>
+            <button type="button" className={shells.LEO ? 'active' : ''} onClick={() => toggleShell('LEO')}>
               LEO
             </button>
-            <button className={shells.MEO ? 'active' : ''} onClick={() => toggleShell('MEO')}>
+            <button type="button" className={shells.MEO ? 'active' : ''} onClick={() => toggleShell('MEO')}>
               MEO
             </button>
-            <button className={shells.GEO ? 'active' : ''} onClick={() => toggleShell('GEO')}>
+            <button type="button" className={shells.GEO ? 'active' : ''} onClick={() => toggleShell('GEO')}>
               GEO
             </button>
           </div>
@@ -429,7 +455,7 @@ function App() {
 
         {selected && (
           <section className="debris-panel">
-            <button className="close" onClick={() => setSelected(null)} aria-label="Close">
+            <button type="button" className="close" onClick={() => setSelected(null)} aria-label="Close">
               ×
             </button>
             <p className="eyebrow">FRAGMENT PROFILE</p>
@@ -516,16 +542,19 @@ function App() {
               NASA ODPO
             </a>
             <button
+              type="button"
               className="cta-ghost"
               onClick={() => {
                 if (navigator.share) {
-                  navigator.share({
-                    title: 'Orbital Debris Observatory',
-                    text: 'Interactive educational view of Earth\'s orbital debris crisis.',
-                    url: window.location.href,
-                  }).catch(() => {});
-                } else {
-                  navigator.clipboard?.writeText(window.location.href);
+                  navigator
+                    .share({
+                      title: 'Orbital Debris Observatory',
+                      text: "Interactive educational view of Earth's orbital debris crisis.",
+                      url: window.location.href,
+                    })
+                    .catch(() => {});
+                } else if (navigator.clipboard?.writeText) {
+                  navigator.clipboard.writeText(window.location.href).catch(() => {});
                 }
               }}
             >
