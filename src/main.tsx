@@ -127,32 +127,32 @@ function Atmosphere() {
   );
 }
 
+/** Use primitive THREE.Line to avoid SVG <line> JSX type collision with DOM types. */
 function OrbitRing({ radius, color, opacity = 0.35 }: { radius: number; color: string; opacity?: number }) {
-  const points = useMemo(() => {
+  const line = useMemo(() => {
     const pts: THREE.Vector3[] = [];
     for (let i = 0; i <= 128; i++) {
       const a = (i / 128) * Math.PI * 2;
       pts.push(new THREE.Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius));
     }
-    return pts;
-  }, [radius]);
-
-  const geom = useMemo(() => {
-    const g = new THREE.BufferGeometry().setFromPoints(points);
-    return g;
-  }, [points]);
+    const geom = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+    });
+    return new THREE.Line(geom, mat);
+  }, [radius, color, opacity]);
 
   useEffect(() => {
     return () => {
-      geom.dispose();
+      line.geometry.dispose();
+      (line.material as THREE.Material).dispose();
     };
-  }, [geom]);
+  }, [line]);
 
-  return (
-    <line geometry={geom}>
-      <lineBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} />
-    </line>
-  );
+  return <primitive object={line} />;
 }
 
 function DebrisCloud({
@@ -312,7 +312,6 @@ function App() {
     setReduced(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }, []);
 
-  // Ensure cursor is restored if panel closes while hovering a node
   useEffect(() => {
     return () => {
       document.body.style.cursor = 'default';
