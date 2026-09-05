@@ -1,30 +1,38 @@
-# LIGHT-POLLUTED EARTH
+# ORBITAL DEBRIS OBSERVATORY
 
-A cinematic, interactive 3D atlas exploring Earth's artificial night.
+Educational interactive website on space pollution / orbital debris, inspired by the Zajno “Educational Website on Space Pollution” concept.
 
-## Current build
-- Interactive WebGL Earth with orbit controls and atmospheric shell
-- Procedural star field and subtle particle depth
-- City-light visualization with selectable city profiles
-- City search UI and data panel
-- Darkness Mode / Restore the Dark interaction
-- Then → Now timeline control (1995–2026)
-- Responsive mobile layout and reduced-motion support
-- Scientific honesty: demo city metrics are explicitly labeled; production VIIRS radiance is intended to replace them
+## Concept
 
-## Production roadmap
-1. Connect NASA Black Marble / NOAA VIIRS radiance composites through a server-side ETL pipeline.
-2. Add GPU radiance textures, mip/LOD tiles and bloom-based emissive rendering.
-3. Add air quality, CO2, temperature, population and urbanization layers.
-4. Add historical comparison, night-sky simulator, city-mode 3D volumes and story scenes.
-5. Add automated data provenance metadata, tests, performance budgets and deployment CI.
+You are an operator inside a research observation deck monitoring Low Earth Orbit. The site contrasts the beauty of Earth with the growing cloud of human-made debris that threatens communications, navigation, and future exploration.
+
+## Features
+
+- **Cinematic 3D Earth** with procedural surface, volumetric-style atmosphere, and orbital shells
+- **Debris visualization** — abstract particle fields and orbit rings for LEO / MEO / GEO
+- **HUD interface** — crosshairs, mission timer, coordinate tags, monospaced telemetry
+- **Historical timeline** from Sputnik (1957) through major collisions and ASAT tests
+- **Kessler Syndrome** explanation
+- **Solutions hub** — de-orbit sails, robotic capture, nets/harpoons, laser concepts + CTAs
+- Responsive layout and reduced-motion support
+
+## Design system
+
+| Element | Implementation |
+|---------|----------------|
+| Palette | Deep charcoal/black (`#000`, `#0A0A0A`, `#282828`), slate HUD (`#5F5F5F`, `#939393`), warning coral/red accents |
+| Aesthetic | Retro-futuristic terminal + aerospace diagram language |
+| Typography | Monospaced telemetry + clean sans for headlines |
+| Hierarchy | Space canvas → 3D Earth stage → floating glass/HUD panels |
 
 ## Run
-`npm install`
 
-`npm run dev`
+```bash
+npm install
+npm run dev
+npm run build
+```
 
-`npm run build`
+## Data note
 
-## Data principle
-Never label a dataset LIVE unless it is actually live. Display source and measurement date for production datasets.
+Debris counts and metrics are educational approximations drawn from publicly discussed NASA/ESA ranges. Production deployments should cite live catalogs (e.g. Space-Track, ESA DISCOS) with provenance.

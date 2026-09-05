@@ -5,116 +5,547 @@ import { OrbitControls, Stars, Html, Sparkles } from '@react-three/drei';
 import * as THREE from 'three';
 import './styles.css';
 
-type City = { name: string; country: string; lat: number; lon: number; light: number; population: string };
-const CITIES: City[] = [
-  {name:'Delhi',country:'India',lat:28.61,lon:77.21,light:96,population:'33M'},
-  {name:'Mumbai',country:'India',lat:19.07,lon:72.88,light:94,population:'22M'},
-  {name:'New York',country:'United States',lat:40.71,lon:-74.01,light:98,population:'19M'},
-  {name:'London',country:'United Kingdom',lat:51.51,lon:-0.13,light:92,population:'9M'},
-  {name:'Tokyo',country:'Japan',lat:35.68,lon:139.69,light:99,population:'37M'},
-  {name:'Sydney',country:'Australia',lat:-33.87,lon:151.21,light:82,population:'5M'},
-  {name:'Cairo',country:'Egypt',lat:30.04,lon:31.24,light:90,population:'23M'},
+/* ---------- Data ---------- */
+type DebrisPoint = {
+  id: string;
+  name: string;
+  shell: 'LEO' | 'MEO' | 'GEO';
+  year: number;
+  size: string;
+  velocity: string;
+  risk: 'LOW' | 'MOD' | 'HIGH';
+  lat: number;
+  lon: number;
+  r: number;
+};
+
+const DEBRIS: DebrisPoint[] = [
+  { id: 'd1', name: 'Iridium 33 Fragment', shell: 'LEO', year: 2009, size: '10–50 cm', velocity: '~7.6 km/s', risk: 'HIGH', lat: 28, lon: 40, r: 2.18 },
+  { id: 'd2', name: 'Cosmos 2251 Remnant', shell: 'LEO', year: 2009, size: '5–20 cm', velocity: '~7.7 km/s', risk: 'HIGH', lat: -15, lon: -80, r: 2.22 },
+  { id: 'd3', name: 'Fengyun-1C Debris', shell: 'LEO', year: 2007, size: '1–10 cm', velocity: '~7.5 km/s', risk: 'MOD', lat: 45, lon: 120, r: 2.15 },
+  { id: 'd4', name: 'Rocket Body (SL-16)', shell: 'LEO', year: 1993, size: '>1 m', velocity: '~7.4 km/s', risk: 'MOD', lat: -30, lon: 10, r: 2.28 },
+  { id: 'd5', name: 'GPS Block IIR Shell', shell: 'MEO', year: 2005, size: '50 cm–1 m', velocity: '~3.9 km/s', risk: 'LOW', lat: 20, lon: -40, r: 2.55 },
+  { id: 'd6', name: 'GEO Graveyard Object', shell: 'GEO', year: 1998, size: '>1 m', velocity: '~3.1 km/s', risk: 'LOW', lat: 5, lon: 90, r: 2.95 },
+  { id: 'd7', name: 'ASAT Test Fragment', shell: 'LEO', year: 2021, size: '1–30 cm', velocity: '~7.8 km/s', risk: 'HIGH', lat: 55, lon: -120, r: 2.12 },
+  { id: 'd8', name: 'Spent Upper Stage', shell: 'MEO', year: 2012, size: '>1 m', velocity: '~4.1 km/s', risk: 'MOD', lat: -40, lon: 150, r: 2.48 },
 ];
 
-function latLon(lat:number, lon:number, r=2.025){
-  const p=THREE.MathUtils.degToRad(lat), t=THREE.MathUtils.degToRad(lon);
-  return new THREE.Vector3(r*Math.cos(p)*Math.cos(t), r*Math.sin(p), -r*Math.cos(p)*Math.sin(t));
+const TIMELINE = [
+  { year: 1957, title: 'Sputnik 1', body: 'First artificial satellite. The orbital age begins; spent stages start to accumulate.', critical: false },
+  { year: 2007, title: 'Fengyun-1C ASAT Test', body: 'China’s anti-satellite test creates one of the largest debris clouds ever recorded in LEO.', critical: true },
+  { year: 2009, title: 'Iridium–Cosmos Collision', body: 'First major accidental satellite-to-satellite collision. Thousands of trackable fragments generated.', critical: true },
+  { year: 2021, title: 'Multiple ASAT Events', body: 'Further kinetic tests and on-orbit breakups continue to feed the debris population.', critical: true },
+  { year: 2025, title: 'Active Debris Removal Era', body: 'Demonstration missions for sails, robotic capture, and net systems begin to scale.', critical: false },
+];
+
+const SOLUTIONS = [
+  { tag: 'Passive', title: 'De-orbit Sails & Drag Devices', body: 'Deployable membranes increase atmospheric drag so objects re-enter and burn up faster at end of life.' },
+  { tag: 'Robotic', title: 'Capture Arms & Magnetic Docking', body: 'Servicing spacecraft use robotic arms or magnetic interfaces to grapple and move defunct satellites.' },
+  { tag: 'Kinetic', title: 'Harpoon & Net Capture', body: 'Projectile or net systems secure uncooperative targets for controlled de-orbit burns.' },
+  { tag: 'Ground', title: 'Laser Ablation Concepts', body: 'Ground- or space-based lasers impart small Δv to tiny debris, altering orbits toward atmospheric decay.' },
+];
+
+/* ---------- Helpers ---------- */
+function latLon(lat: number, lon: number, r = 2.02) {
+  const phi = THREE.MathUtils.degToRad(lat);
+  const theta = THREE.MathUtils.degToRad(lon);
+  return new THREE.Vector3(
+    r * Math.cos(phi) * Math.cos(theta),
+    r * Math.sin(phi),
+    -r * Math.cos(phi) * Math.sin(theta)
+  );
 }
 
-function makeEarthTexture(){
-  const canvas=document.createElement('canvas');
-  canvas.width=2048; canvas.height=1024;
-  const ctx=canvas.getContext('2d')!;
-  const ocean=ctx.createLinearGradient(0,0,0,1024);
-  ocean.addColorStop(0,'#071d2b'); ocean.addColorStop(.5,'#06334a'); ocean.addColorStop(1,'#041923');
-  ctx.fillStyle=ocean; ctx.fillRect(0,0,2048,1024);
-  const land=[
-    [[120,300],[210,220],[340,235],[430,315],[405,420],[300,470],[225,410]],
-    [[455,130],[575,105],[680,165],[700,285],[625,330],[555,275],[480,300]],
-    [[700,345],[820,300],[905,360],[875,485],[805,555],[745,505]],
-    [[960,180],[1080,145],[1165,215],[1120,315],[1015,330],[940,270]],
-    [[1135,355],[1245,330],[1310,425],[1275,555],[1170,535],[1110,445]],
-    [[1360,170],[1495,145],[1590,215],[1560,330],[1450,345],[1365,285]],
-    [[1540,390],[1650,365],[1760,430],[1720,520],[1605,535],[1535,480]],
-    [[360,590],[430,540],[500,600],[490,760],[410,875],[345,790]],
-    [[720,620],[805,570],[875,650],[850,820],[760,875],[700,760]],
-    [[1240,650],[1340,600],[1425,670],[1380,820],[1280,875],[1215,770]],
+function makeEarthTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2048;
+  canvas.height = 1024;
+  const ctx = canvas.getContext('2d')!;
+  const ocean = ctx.createLinearGradient(0, 0, 0, 1024);
+  ocean.addColorStop(0, '#061820');
+  ocean.addColorStop(0.5, '#0a2a38');
+  ocean.addColorStop(1, '#041018');
+  ctx.fillStyle = ocean;
+  ctx.fillRect(0, 0, 2048, 1024);
+
+  const land = [
+    [[120, 300], [210, 220], [340, 235], [430, 315], [405, 420], [300, 470], [225, 410]],
+    [[455, 130], [575, 105], [680, 165], [700, 285], [625, 330], [555, 275], [480, 300]],
+    [[700, 345], [820, 300], [905, 360], [875, 485], [805, 555], [745, 505]],
+    [[960, 180], [1080, 145], [1165, 215], [1120, 315], [1015, 330], [940, 270]],
+    [[1135, 355], [1245, 330], [1310, 425], [1275, 555], [1170, 535], [1110, 445]],
+    [[1360, 170], [1495, 145], [1590, 215], [1560, 330], [1450, 345], [1365, 285]],
+    [[1540, 390], [1650, 365], [1760, 430], [1720, 520], [1605, 535], [1535, 480]],
+    [[360, 590], [430, 540], [500, 600], [490, 760], [410, 875], [345, 790]],
+    [[720, 620], [805, 570], [875, 650], [850, 820], [760, 875], [700, 760]],
+    [[1240, 650], [1340, 600], [1425, 670], [1380, 820], [1280, 875], [1215, 770]],
   ];
-  ctx.strokeStyle='#183e43'; ctx.lineWidth=3;
-  land.forEach(poly=>{
-    ctx.beginPath(); poly.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y)); ctx.closePath();
-    const g=ctx.createLinearGradient(0,120,0,900); g.addColorStop(0,'#365b43'); g.addColorStop(.55,'#1f513d'); g.addColorStop(1,'#14372f');
-    ctx.fillStyle=g; ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = '#1a3a40';
+  ctx.lineWidth = 2;
+  land.forEach((poly) => {
+    ctx.beginPath();
+    poly.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, 120, 0, 900);
+    g.addColorStop(0, '#2a4a38');
+    g.addColorStop(0.55, '#1a3a30');
+    g.addColorStop(1, '#0e2820');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.stroke();
   });
-  ctx.globalAlpha=.18; ctx.strokeStyle='#d7e9e5'; ctx.lineWidth=8;
-  for(let y=90;y<980;y+=95){ctx.beginPath();ctx.moveTo(0,y);ctx.bezierCurveTo(500,y-45,1450,y+45,2048,y-10);ctx.stroke();}
-  ctx.globalAlpha=1;
-  const texture=new THREE.CanvasTexture(canvas);
-  texture.colorSpace=THREE.SRGBColorSpace;
-  texture.anisotropy=4;
+  ctx.globalAlpha = 0.12;
+  ctx.strokeStyle = '#c8e0dc';
+  ctx.lineWidth = 6;
+  for (let y = 90; y < 980; y += 100) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.bezierCurveTo(500, y - 40, 1450, y + 40, 2048, y - 8);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
   return texture;
 }
 
-function CityLights({enabled}:{enabled:boolean}){
-  const points=useMemo(()=>CITIES.map(c=>latLon(c.lat,c.lon)),[]);
-  return <group visible={enabled}>{points.map((p,i)=><group key={i} position={p}>
-    <mesh><sphereGeometry args={[0.022 + CITIES[i].light/7600,10,10]}/><meshBasicMaterial color="#ffd37c" toneMapped={false}/></mesh>
-    <pointLight color="#ffb84d" intensity={0.55} distance={0.38}/>
-  </group>)}</group>;
-}
-
-function Atmosphere(){
-  return <mesh scale={1.055}>
-    <sphereGeometry args={[2,96,96]}/>
-    <meshBasicMaterial color="#5db8e5" transparent opacity={0.13} side={THREE.BackSide} blending={THREE.AdditiveBlending} depthWrite={false}/>
-  </mesh>;
-}
-
-function Earth({dark,lights}:{dark:boolean;lights:boolean}){
-  const ref=useRef<THREE.Group>(null);
-  const texture=useMemo(makeEarthTexture,[]);
-  useFrame((_,d)=>{ if(ref.current) ref.current.rotation.y += d*0.018; });
-  useEffect(()=>()=>texture.dispose(),[texture]);
-  return <group ref={ref} position={[1.15,0,0]}>
-    <mesh>
-      <sphereGeometry args={[2,128,128]}/>
-      <meshStandardMaterial map={texture} color={dark?'#9aa6a8':'#ffffff'} roughness={0.86} metalness={0.02} emissive={dark?'#010202':'#030708'} emissiveIntensity={dark?0.08:0.16}/>
+/* ---------- 3D Components ---------- */
+function Atmosphere() {
+  return (
+    <mesh scale={1.06}>
+      <sphereGeometry args={[2, 96, 96]} />
+      <meshBasicMaterial
+        color="#4a9ec4"
+        transparent
+        opacity={0.11}
+        side={THREE.BackSide}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+      />
     </mesh>
-    <CityLights enabled={lights}/>
-    <Atmosphere/>
-  </group>;
+  );
 }
 
-function Scene({lights,dark}:{lights:boolean;dark:boolean}){
-  return <>
-    <color attach="background" args={['#020406']} />
-    <ambientLight intensity={dark?0.06:0.16}/>
-    <directionalLight position={[-4,2,5]} intensity={dark?0.38:1.05} color="#e3edf3"/>
-    <Stars radius={80} depth={45} count={dark?4200:3000} factor={2.1} saturation={0} fade speed={0.25}/>
-    <Sparkles count={dark?100:55} scale={9} size={1.2} speed={0.22} opacity={0.32}/>
-    <Earth dark={dark} lights={lights}/>
-    <OrbitControls enablePan={false} minDistance={3.15} maxDistance={7.5} enableDamping dampingFactor={0.055} rotateSpeed={0.38}/>
-  </>;
+function OrbitRing({ radius, color, opacity = 0.35 }: { radius: number; color: string; opacity?: number }) {
+  const points = useMemo(() => {
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 128; i++) {
+      const a = (i / 128) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius));
+    }
+    return pts;
+  }, [radius]);
+  const geom = useMemo(() => new THREE.BufferGeometry().setFromPoints(points), [points]);
+  return (
+    <line geometry={geom}>
+      <lineBasicMaterial color={color} transparent opacity={opacity} />
+    </line>
+  );
 }
 
-function App(){
-  const [lights,setLights]=useState(true), [dark,setDark]=useState(false), [query,setQuery]=useState(''), [city,setCity]=useState<City|null>(null), [time,setTime]=useState(2026), [menu,setMenu]=useState(false);
-  const [reduced,setReduced]=useState(false);
-  useEffect(()=>{setReduced(window.matchMedia('(prefers-reduced-motion: reduce)').matches)},[]);
-  const results=query?CITIES.filter(c=>c.name.toLowerCase().includes(query.toLowerCase())).slice(0,4):[];
-  const choose=(c:City)=>{setCity(c);setQuery(c.name)};
-  return <main className={dark?'app dark-mode':'app'}>
-    <Canvas dpr={[1,1.6]} camera={{position:[0,0,6.5],fov:42}} gl={{antialias:true,powerPreference:'high-performance'}}>
-      <Suspense fallback={<Html center><div className="loader">CALIBRATING EARTH…</div></Html>}><Scene lights={lights} dark={dark}/></Suspense>
-    </Canvas>
-    <div className="grain"/>
-    <header><div className="brand"><span className="brand-mark">◉</span><div><b>LIGHT-POLLUTED</b><small>EARTH / NIGHT ATLAS</small></div></div><button className="menu" onClick={()=>setMenu(!menu)} aria-label="Open navigation">{menu?'CLOSE':'MENU'} <span>☰</span></button></header>
-    {menu&&<nav className="nav"><button>EXPLORE</button><button>DATA</button><button>CITIES</button><button>NIGHT SKY</button><button>STORY</button><button>ABOUT</button></nav>}
-    <section className="hero"><p className="eyebrow">A PLANET AFTER SUNSET</p><h1>WHEN NIGHT<br/><em>NEVER ARRIVES.</em></h1><p className="lede">Explore Earth's artificial night — where cities glow, skies fade, and darkness becomes a disappearing resource.</p><div className="actions"><button className="primary" onClick={()=>document.getElementById('earth')?.scrollIntoView({behavior:reduced?'auto':'smooth'})}>EXPLORE EARTH <span>↗</span></button><button className="secondary" onClick={()=>setDark(!dark)}>{dark?'RESTORE LIGHT':'RESTORE THE DARK'} <span>◐</span></button></div></section>
-    <aside className="control-card" id="earth"><div className="card-top"><span>EARTH / NIGHT VIEW</span><span className="status"><i/> LATEST AVAILABLE DATA</span></div><div className="search-wrap"><span>⌕</span><input aria-label="Search city" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search a city…"/>{results.length>0&&<div className="results">{results.map(c=><button key={c.name} onClick={()=>choose(c)}><b>{c.name}</b><span>{c.country}</span></button>)}</div>}</div><div className="toggles"><button className={lights?'active':''} onClick={()=>setLights(!lights)}><i/> CITY LIGHTS <span>{lights?'ON':'OFF'}</span></button><button className={dark?'active':''} onClick={()=>setDark(!dark)}><i/> DARKNESS MODE <span>{dark?'ON':'OFF'}</span></button></div><label className="timeline"><span>THEN</span><input type="range" min="1995" max="2026" value={time} onChange={e=>setTime(+e.target.value)}/><span>{time}</span></label></aside>
-    {city&&<section className="city-panel"><button className="close" onClick={()=>setCity(null)}>×</button><p className="eyebrow">CITY PROFILE</p><h2>{city.name}</h2><p>{city.country}</p><div className="metric"><span>ARTIFICIAL LIGHT</span><strong>{city.light}<small>/100</small></strong></div><div className="metric"><span>POPULATION</span><strong>{city.population}</strong></div><p className="note">Illustrative city metric. Connect the production VIIRS pipeline to replace the demo values with measured radiance.</p></section>}
-    <footer><span>LIGHT-POLLUTED EARTH © 2026</span><span>DATA VISUALIZATION / SCIENCE / DESIGN</span><span>DRAG TO ROTATE · SCROLL TO EXPLORE</span></footer>
-  </main>;
+function DebrisCloud({
+  shell,
+  visible,
+  onSelect,
+}: {
+  shell: 'LEO' | 'MEO' | 'GEO';
+  visible: boolean;
+  onSelect: (d: DebrisPoint) => void;
+}) {
+  const items = useMemo(() => DEBRIS.filter((d) => d.shell === shell), [shell]);
+  const positions = useMemo(
+    () => items.map((d) => latLon(d.lat, d.lon, d.r)),
+    [items]
+  );
+
+  // procedural extra particles for density
+  const extra = useMemo(() => {
+    const n = shell === 'LEO' ? 180 : shell === 'MEO' ? 60 : 30;
+    const arr: THREE.Vector3[] = [];
+    const baseR = shell === 'LEO' ? 2.2 : shell === 'MEO' ? 2.55 : 2.95;
+    for (let i = 0; i < n; i++) {
+      const lat = (Math.random() - 0.5) * 140;
+      const lon = Math.random() * 360 - 180;
+      const jitter = (Math.random() - 0.5) * 0.12;
+      arr.push(latLon(lat, lon, baseR + jitter));
+    }
+    return arr;
+  }, [shell]);
+
+  if (!visible) return null;
+
+  return (
+    <group>
+      {extra.map((p, i) => (
+        <mesh key={`e-${shell}-${i}`} position={p}>
+          <sphereGeometry args={[0.008 + Math.random() * 0.01, 6, 6]} />
+          <meshBasicMaterial color={shell === 'LEO' ? '#ff6b6b' : shell === 'MEO' ? '#ffb86b' : '#939393'} toneMapped={false} />
+        </mesh>
+      ))}
+      {items.map((d, i) => (
+        <group key={d.id} position={positions[i]}>
+          <mesh
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(d);
+            }}
+            onPointerOver={() => (document.body.style.cursor = 'pointer')}
+            onPointerOut={() => (document.body.style.cursor = 'default')}
+          >
+            <sphereGeometry args={[0.028, 12, 12]} />
+            <meshBasicMaterial
+              color={d.risk === 'HIGH' ? '#ff4d4d' : d.risk === 'MOD' ? '#ff9f43' : '#939393'}
+              toneMapped={false}
+            />
+          </mesh>
+          <pointLight
+            color={d.risk === 'HIGH' ? '#ff4d4d' : '#ffb84d'}
+            intensity={0.35}
+            distance={0.4}
+          />
+        </group>
+      ))}
+    </group>
+  );
 }
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+function Earth({ shells, onSelect }: { shells: Record<string, boolean>; onSelect: (d: DebrisPoint) => void }) {
+  const ref = useRef<THREE.Group>(null);
+  const texture = useMemo(makeEarthTexture, []);
+  useFrame((_, dt) => {
+    if (ref.current) ref.current.rotation.y += dt * 0.012;
+  });
+  useEffect(() => () => texture.dispose(), [texture]);
+
+  return (
+    <group ref={ref} position={[0.9, 0, 0]}>
+      <mesh>
+        <sphereGeometry args={[2, 128, 128]} />
+        <meshStandardMaterial
+          map={texture}
+          color="#ffffff"
+          roughness={0.88}
+          metalness={0.02}
+          emissive="#030608"
+          emissiveIntensity={0.12}
+        />
+      </mesh>
+      <Atmosphere />
+      {/* Orbit shells */}
+      <OrbitRing radius={2.2} color="#ff4d4d" opacity={0.4} />
+      <OrbitRing radius={2.55} color="#ffb86b" opacity={0.28} />
+      <OrbitRing radius={2.95} color="#5f5f5f" opacity={0.22} />
+      <DebrisCloud shell="LEO" visible={shells.LEO} onSelect={onSelect} />
+      <DebrisCloud shell="MEO" visible={shells.MEO} onSelect={onSelect} />
+      <DebrisCloud shell="GEO" visible={shells.GEO} onSelect={onSelect} />
+    </group>
+  );
+}
+
+function Scene({ shells, onSelect }: { shells: Record<string, boolean>; onSelect: (d: DebrisPoint) => void }) {
+  return (
+    <>
+      <color attach="background" args={['#000000']} />
+      <ambientLight intensity={0.12} />
+      <directionalLight position={[-5, 3, 4]} intensity={1.1} color="#e8f0f4" />
+      <Stars radius={90} depth={50} count={4500} factor={2.2} saturation={0} fade speed={0.2} />
+      <Sparkles count={80} scale={12} size={1.1} speed={0.18} opacity={0.28} />
+      <Earth shells={shells} onSelect={onSelect} />
+      <OrbitControls
+        enablePan={false}
+        minDistance={3.4}
+        maxDistance={9}
+        enableDamping
+        dampingFactor={0.05}
+        rotateSpeed={0.35}
+      />
+    </>
+  );
+}
+
+/* ---------- UI ---------- */
+function MissionClock() {
+  const [t, setT] = useState('00:00:00');
+  useEffect(() => {
+    const start = Date.now();
+    const id = setInterval(() => {
+      const s = Math.floor((Date.now() - start) / 1000);
+      const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+      const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      setT(`${hh}:${mm}:${ss}`);
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return t;
+}
+
+function App() {
+  const [menu, setMenu] = useState(false);
+  const [selected, setSelected] = useState<DebrisPoint | null>(null);
+  const [shells, setShells] = useState({ LEO: true, MEO: true, GEO: true });
+  const [reduced, setReduced] = useState(false);
+  const clock = MissionClock();
+
+  useEffect(() => {
+    setReduced(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }, []);
+
+  const toggleShell = (key: 'LEO' | 'MEO' | 'GEO') =>
+    setShells((s) => ({ ...s, [key]: !s[key] }));
+
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
+    setMenu(false);
+  };
+
+  return (
+    <main className="app">
+      <Canvas
+        dpr={[1, 1.6]}
+        camera={{ position: [0, 0.3, 6.8], fov: 42 }}
+        gl={{ antialias: true, powerPreference: 'high-performance' }}
+      >
+        <Suspense
+          fallback={
+            <Html center>
+              <div className="loader">CALIBRATING ORBIT…</div>
+            </Html>
+          }
+        >
+          <Scene shells={shells} onSelect={setSelected} />
+        </Suspense>
+      </Canvas>
+
+      <div className="hud-overlay" aria-hidden />
+
+      {/* Corner HUD crosshairs */}
+      <div className="crosshair tl">
+        <span>OBS DECK // PRIMARY</span>
+        <span className="coord">LAT 00.00 · LON 000.00</span>
+        <span>RANGE 420 KM</span>
+      </div>
+      <div className="crosshair tr">
+        <span>MISSION TIMER</span>
+        <span className="coord">{clock}</span>
+        <span>MODE: TRACK</span>
+      </div>
+      <div className="crosshair bl">
+        <span>LEO DENSITY</span>
+        <span className="coord">HIGH</span>
+        <span>CATALOG ≈ 36k+</span>
+      </div>
+      <div className="crosshair br">
+        <span>LINK SECURE</span>
+        <span className="coord">NASA / ESA REF</span>
+        <span>ΔV BUDGET —</span>
+      </div>
+
+      <div className="ui-layer">
+        <header>
+          <div className="brand">
+            <div className="brand-mark">◉</div>
+            <div>
+              <b>ORBITAL DEBRIS</b>
+              <small>OBSERVATORY / SPACE POLLUTION</small>
+            </div>
+          </div>
+          <button className="menu-btn" onClick={() => setMenu(!menu)} aria-label="Menu">
+            {menu ? 'CLOSE' : 'MENU'} ☰
+          </button>
+        </header>
+
+        {menu && (
+          <nav className="nav">
+            <button className="active" onClick={() => scrollTo('hero')}>OVERVIEW</button>
+            <button onClick={() => scrollTo('tracker')}>DEBRIS TRACKER</button>
+            <button onClick={() => scrollTo('timeline')}>TIMELINE</button>
+            <button onClick={() => scrollTo('solutions')}>SOLUTIONS</button>
+          </nav>
+        )}
+
+        <section className="hero" id="hero">
+          <p className="eyebrow">RESEARCH OBSERVATION DECK · LEO MONITOR</p>
+          <h1>
+            EARTH IS
+            <br />
+            <em>SURROUNDED.</em>
+          </h1>
+          <p className="lede">
+            Since 1957, spent rockets, dead satellites, and collision fragments have filled Low Earth Orbit.
+            This station visualizes the growing cloud that threatens global communications, navigation, and crewed flight.
+          </p>
+          <div className="actions">
+            <button className="primary" onClick={() => scrollTo('tracker')}>
+              ENTER TRACKER <span>↗</span>
+            </button>
+            <button className="secondary" onClick={() => scrollTo('solutions')}>
+              VIEW SOLUTIONS
+            </button>
+          </div>
+        </section>
+
+        <aside className="telemetry" id="tracker">
+          <div className="telemetry-top">
+            <span>ORBITAL LAYER CONTROL</span>
+            <span>
+              <i className="status-dot" /> LIVE VIEW
+            </span>
+          </div>
+          <div className="orbit-toggles">
+            <button className={shells.LEO ? 'active' : ''} onClick={() => toggleShell('LEO')}>
+              LEO
+            </button>
+            <button className={shells.MEO ? 'active' : ''} onClick={() => toggleShell('MEO')}>
+              MEO
+            </button>
+            <button className={shells.GEO ? 'active' : ''} onClick={() => toggleShell('GEO')}>
+              GEO
+            </button>
+          </div>
+          <div className="stats-grid">
+            <div className="stat">
+              <label>Trackable objects</label>
+              <strong className="alert">~36,000+</strong>
+            </div>
+            <div className="stat">
+              <label>Est. &gt;1 cm</label>
+              <strong>~1,000,000</strong>
+            </div>
+            <div className="stat">
+              <label>LEO velocity</label>
+              <strong>~7–8 km/s</strong>
+            </div>
+            <div className="stat">
+              <label>Collision risk</label>
+              <strong className="alert">RISING</strong>
+            </div>
+          </div>
+          <p style={{ margin: '12px 0 0', fontSize: 11, color: 'var(--slate-light)', lineHeight: 1.5 }}>
+            Click highlighted debris nodes for telemetry. Counts are educational approximations from public NASA/ESA ranges.
+          </p>
+        </aside>
+
+        {selected && (
+          <section className="debris-panel">
+            <button className="close" onClick={() => setSelected(null)} aria-label="Close">
+              ×
+            </button>
+            <p className="eyebrow">FRAGMENT PROFILE</p>
+            <h2>{selected.name}</h2>
+            <p className="meta">
+              {selected.shell} · {selected.year}
+            </p>
+            <div className="metric">
+              <span>Size class</span>
+              <strong>{selected.size}</strong>
+            </div>
+            <div className="metric">
+              <span>Velocity</span>
+              <strong>{selected.velocity}</strong>
+            </div>
+            <div className="metric">
+              <span>Risk band</span>
+              <strong className={selected.risk === 'HIGH' ? 'alert' : ''}>{selected.risk}</strong>
+            </div>
+          </section>
+        )}
+
+        <section className="section" id="timeline">
+          <div className="section-head">
+            <p className="eyebrow">CHRONOLOGY</p>
+            <h2>How the sky filled</h2>
+            <p>
+              From a single satellite to a cascading risk environment — major milestones in orbital littering and the
+              emergence of the Kessler Syndrome.
+            </p>
+          </div>
+          <div className="timeline-track">
+            {TIMELINE.map((ev) => (
+              <div key={ev.year} className={`timeline-item${ev.critical ? ' critical' : ''}`}>
+                <div className="year">{ev.year}</div>
+                <h3>{ev.title}</h3>
+                <p>{ev.body}</p>
+              </div>
+            ))}
+          </div>
+          <div className="kessler">
+            <h3>KESSLER SYNDROME</h3>
+            <p>
+              A theoretical cascade in which collisions generate more fragments, which then collide again — exponentially
+              increasing the probability of further impacts. Beyond a critical density, parts of LEO could become
+              effectively unusable for decades without active cleanup.
+            </p>
+          </div>
+        </section>
+
+        <section className="section" id="solutions">
+          <div className="section-head">
+            <p className="eyebrow">REMEDIATION</p>
+            <h2>Cleanup & mitigation</h2>
+            <p>
+              The interface shifts from diagnosis to action. Aerospace programs are developing technologies to remove
+              existing debris and prevent new generations of fragments.
+            </p>
+          </div>
+          <div className="solutions-grid">
+            {SOLUTIONS.map((s) => (
+              <article key={s.title} className="solution-card">
+                <div className="tag">{s.tag}</div>
+                <h3>{s.title}</h3>
+                <p>{s.body}</p>
+              </article>
+            ))}
+          </div>
+          <div className="cta-row">
+            <a
+              className="cta-primary"
+              href="https://www.esa.int/Space_Safety/Space_Debris"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ESA Space Debris <span>↗</span>
+            </a>
+            <a
+              className="cta-ghost"
+              href="https://orbitaldebris.jsc.nasa.gov/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              NASA ODPO
+            </a>
+            <button
+              className="cta-ghost"
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({
+                    title: 'Orbital Debris Observatory',
+                    text: 'Interactive educational view of Earth\'s orbital debris crisis.',
+                    url: window.location.href,
+                  }).catch(() => {});
+                } else {
+                  navigator.clipboard?.writeText(window.location.href);
+                }
+              }}
+            >
+              Share this deck
+            </button>
+          </div>
+        </section>
+
+        <footer>
+          <span>ORBITAL DEBRIS OBSERVATORY © 2026</span>
+          <span>EDUCATIONAL / SCIENCE / DESIGN</span>
+          <span>DRAG TO ROTATE · SCROLL · CLICK NODES</span>
+        </footer>
+      </div>
+    </main>
+  );
+}
+
+createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
